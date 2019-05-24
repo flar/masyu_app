@@ -1,33 +1,15 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'puzzles.dart';
 
 void main() => runApp(MasyuApp());
 
-const Wikipedia_Masyu_Example = [
-  '..O.O.....',
-  '....O...@.',
-  '..@.@.O...',
-  '...O..O...',
-  '@....O...O',
-  '..O....O..',
-  '..@...O...',
-  'O...@....O',
-  '......OO..',
-  '..@......@',
-];
+_launchHelpURL() {
+  _launchURL('https://en.wikipedia.org/wiki/Masyu#Rules');
+}
 
-const Wikipedia_Masyu_Solution = [
-  [0, 1], [0, 5], [1, 5], [1, 3], [4, 3], [4, 4], [2, 4], [2, 7],
-  [3, 7], [3, 5], [6, 5], [6, 7], [4, 7], [4, 8], [1, 8], [1, 6],
-  [0, 6], [0, 9], [5, 9], [5, 8], [6, 8], [6, 9], [9, 9], [9, 5],
-  [8, 5], [8, 8], [7, 8], [7, 4], [9, 4], [9, 2], [6, 2], [6, 4],
-  [5, 4], [5, 1], [8, 1], [8, 0], [4, 0], [4, 2], [2, 2], [2, 0],
-  [1, 0], [1, 1],
-];
-
-_launchHelpURL() async {
-  const url = 'https://en.wikipedia.org/wiki/Masyu';
+_launchURL(String url) async {
   if (await canLaunch(url)) {
     await launch(url);
   } else {
@@ -65,8 +47,7 @@ class MasyuHomePage extends StatefulWidget {
 
   @override
   _MasyuHomePageState createState() =>
-      _MasyuHomePageState(Wikipedia_Masyu_Example,
-                          Wikipedia_Masyu_Solution);
+      _MasyuHomePageState(PUZZLES[1]);
 }
 
 bool moreThanTwoPaths(int paths) {
@@ -187,24 +168,35 @@ class _MasyuCellPainter extends CustomPainter {
 }
 
 class _MasyuHomePageState extends State<MasyuHomePage> {
+  MasyuPuzzle puzzle;
   List<List<CustomPaint>> _cells;
-  List<List<int>> _solution;
   bool _dragging = false;
   int _dragRow;
   int _dragCol;
 
-  _MasyuHomePageState(List<String> puzzleSpec, [this._solution]) {
-    var nRows = puzzleSpec.length;
-    var nCols = puzzleSpec[0].length;
-    _cells = List<List<CustomPaint>>
-        .generate(nRows, (row) => List<CustomPaint>
-        .generate(nCols, (col) => CustomPaint(
+  _MasyuHomePageState(this.puzzle) {
+    _cells = toCells(puzzle);
+  }
+
+  setPuzzle(MasyuPuzzle puzzle) {
+    List<List<CustomPaint>> cells = toCells(puzzle);
+    setState(() {
+      this.puzzle = puzzle;
+      this._cells = cells;
+      this._dragging = false;
+    });
+  }
+
+  List<List<CustomPaint>> toCells(MasyuPuzzle puzzle) {
+    return List<List<CustomPaint>>
+        .generate(puzzle.numRows, (row) => List<CustomPaint>
+        .generate(puzzle.numCols, (col) => CustomPaint(
 //            size: Size(20, 20),
-            key: GlobalKey(),
-            isComplex: true,
-            willChange: true,
-            painter: _MasyuCellPainter(_constraintFor(puzzleSpec[row][col])),
-            child: Container(width: 40, height: 40),
+      key: GlobalKey(),
+      isComplex: true,
+      willChange: true,
+      painter: _MasyuCellPainter(_constraintFor(puzzle.gridSpec[row][col])),
+      child: Container(width: 40, height: 40),
     )));
   }
 
@@ -244,13 +236,29 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
 
   solve() {
     clear();
+    List<List<int>> path = puzzle.solution;
     _dragging = true;
-    _dragRow = _solution[_solution.length - 1][0];
-    _dragCol = _solution[_solution.length - 1][1];
-    for (int i = 0; i < _solution.length; i++) {
-      moveTo(_solution[i][0], _solution[i][1]);
-    }
+    _dragRow = path.last[0];
+    _dragCol = path.last[1];
+    path.forEach((pt) => moveTo(pt[0], pt[1]));
     _dragging = false;
+  }
+
+  Widget _title() {
+    if (puzzle == null) {
+      return Text('No puzzle loaded');
+    }
+    if (puzzle.author == null) {
+      return Text(puzzle.description ?? 'Unknown puzzle');
+    }
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(puzzle.description ?? 'Unknown puzzle', textAlign: TextAlign.left),
+        Text('by ${puzzle.author}', textAlign: TextAlign.right),
+      ],
+    );
   }
 
   doDrag(Offset pos) {
@@ -275,7 +283,6 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
   }
 
   dragStop() => _dragging = false;
-
   @override
   Widget build(BuildContext context) {
     // This method is rerun every time setState is called, for instance as done
@@ -288,7 +295,19 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
       appBar: AppBar(
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: _title(),
+      ),
+      drawer: Drawer(
+        child: ListView(
+          children: List<Widget>.generate(PUZZLES.length, (i) => ListTile(
+            title: Text(PUZZLES[i].description),
+            trailing: Icon(Icons.arrow_forward),
+            onTap: () {
+              setPuzzle(PUZZLES[i]);
+              Navigator.of(context).pop();
+            }
+          ))
+        )
       ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
@@ -324,7 +343,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
           Spacer(),
           RaisedButton(
             child: Text('Show Solution'),
-            onPressed: _solution == null ? null : () => solve(),
+            onPressed: puzzle.solution == null ? null : () => solve(),
           ),
           Spacer(flex: 2),
         ],
