@@ -5,11 +5,11 @@ import 'puzzles.dart';
 
 void main() => runApp(MasyuApp());
 
-_launchHelpURL() {
+void _launchHelpURL() {
   _launchURL('https://en.wikipedia.org/wiki/Masyu#Rules');
 }
 
-_launchURL(String url) async {
+void _launchURL(String url) async {
   if (await canLaunch(url)) {
     await launch(url);
   } else {
@@ -34,90 +34,64 @@ class MasyuApp extends StatelessWidget {
 class MasyuHomePage extends StatefulWidget {
   MasyuHomePage({Key key, this.title}) : super(key: key);
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   final String title;
 
   @override
-  _MasyuHomePageState createState() =>
-      _MasyuHomePageState(PUZZLES[1]);
+  _MasyuHomePageState createState() => _MasyuHomePageState(PUZZLES[1]);
 }
-
-bool moreThanTwoPaths(int paths) {
-  paths &= paths-1;
-  paths &= paths-1;
-  return paths > 0;
-}
-
-const int CELL_EMPTY = 0;
-const int CELL_OPEN_CIRCLE = 1;
-const int CELL_FILL_CIRCLE = 2;
 
 const int PATH_UP = 1;
 const int PATH_DN = 2;
 const int PATH_LT = 4;
 const int PATH_RT = 8;
 
-class Dir {
-  final int dr;
-  final int dc;
+class Direction {
+  final int rowDelta;
+  final int colDelta;
   final int fromDir;
   final int toDir;
 
-  const Dir({this.dr, this.dc, this.fromDir, this.toDir});
-}
+  const Direction(this.rowDelta, this.colDelta, this.fromDir, this.toDir);
 
-const Dir DIR_UP    = Dir(dr: -1, dc:  0, fromDir: PATH_UP, toDir: PATH_DN);
-const Dir DIR_DOWN  = Dir(dr:  1, dc:  0, fromDir: PATH_DN, toDir: PATH_UP);
-const Dir DIR_LEFT  = Dir(dr:  0, dc: -1, fromDir: PATH_LT, toDir: PATH_RT);
-const Dir DIR_RIGHT = Dir(dr:  0, dc:  1, fromDir: PATH_RT, toDir: PATH_LT);
-
-int _constraintFor(String cellChar) {
-  switch (cellChar) {
-    case 'O': return CELL_OPEN_CIRCLE;
-    case '@': return CELL_FILL_CIRCLE;
-    default: return CELL_EMPTY;
-  }
+  static const up    = Direction(-1,  0, PATH_UP, PATH_DN);
+  static const down  = Direction( 1,  0, PATH_DN, PATH_UP);
+  static const left  = Direction( 0, -1, PATH_LT, PATH_RT);
+  static const right = Direction( 0,  1, PATH_RT, PATH_LT);
 }
 
 class _MasyuCellPainter extends CustomPainter {
   final int constraint;
-  ValueNotifier<int> pathNotifier;
+  ValueNotifier<int> pathMaskNotifier;
 
   _MasyuCellPainter(this.constraint, [int initPaths = 0]) {
-    this.pathNotifier = ValueNotifier(initPaths);
+    this.pathMaskNotifier = ValueNotifier(initPaths);
   }
 
   @override
   void addListener(VoidCallback listener) {
-    pathNotifier.addListener(listener);
+    pathMaskNotifier.addListener(listener);
   }
 
   @override
   void removeListener(VoidCallback listener) {
-    pathNotifier.removeListener(listener);
+    pathMaskNotifier.removeListener(listener);
   }
 
-  addPath(int dir) {
+  void addPath(int dir) {
     switch (dir) {
       case PATH_UP:
       case PATH_DN:
       case PATH_LT:
       case PATH_RT:
-        pathNotifier.value ^= dir;
+        pathMaskNotifier.value ^= dir;
         break;
+      default:
+        throw 'Unrecognized path direction: $dir';
     }
   }
 
-  clearPath() {
-    pathNotifier.value = 0;
+  void clearPath() {
+    pathMaskNotifier.value = 0;
   }
 
   @override
@@ -125,17 +99,27 @@ class _MasyuCellPainter extends CustomPainter {
     return true;
   }
 
+  /**
+   * Determine if more than two paths are indicated for the cell by counting
+   * the bits in the bitmask of its paths.
+   */
+  bool _moreThanTwoPaths(int pathmask) {
+    pathmask &= pathmask-1;
+    pathmask &= pathmask-1;
+    return pathmask > 0;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
 //    print('paint(size=$size, constraint=$constraint, paths=$paths.value)');
-    int paths = pathNotifier.value;
+    int pathMask = pathMaskNotifier.value;
 
     Rect bounds = Rect.fromLTWH(0.0, 0.0, size.width, size.height);
-    var minDim = min(size.width, size.height);
-    var radius = minDim * 0.375;
-    var pathW = max(2.0, minDim * 0.125);
+    double minDim = min(size.width, size.height);
+    double radius = minDim * 0.375;
+    double pathW = max(2.0, minDim * 0.125);
 
-    var paint = Paint();
+    Paint paint = Paint();
 
     canvas.clipRect(bounds);
 
@@ -145,10 +129,10 @@ class _MasyuCellPainter extends CustomPainter {
 
     // constraint
     paint.color = Colors.black;
-    if (constraint == CELL_FILL_CIRCLE) canvas.drawCircle(bounds.center, radius, paint);
+    if (constraint == CellType.filledCircle) canvas.drawCircle(bounds.center, radius, paint);
     paint.style = PaintingStyle.stroke;
     paint.strokeWidth = 2;
-    if (constraint == CELL_OPEN_CIRCLE) canvas.drawCircle(bounds.center, radius, paint);
+    if (constraint == CellType.openCircle) canvas.drawCircle(bounds.center, radius, paint);
 
     // border
     paint.color = Colors.blueGrey;
@@ -156,14 +140,14 @@ class _MasyuCellPainter extends CustomPainter {
     canvas.drawRect(bounds, paint);
 
     // paths
-    paint.color = moreThanTwoPaths(paths) ? Colors.red : Colors.blue;
+    paint.color = _moreThanTwoPaths(pathMask) ? Colors.red : Colors.blue;
     paint.strokeWidth = pathW;
     paint.strokeJoin = StrokeJoin.round;
     paint.strokeCap = StrokeCap.round;
-    if ((paths & PATH_UP) != 0) canvas.drawLine(bounds.center, bounds.topCenter,    paint);
-    if ((paths & PATH_DN) != 0) canvas.drawLine(bounds.center, bounds.bottomCenter, paint);
-    if ((paths & PATH_LT) != 0) canvas.drawLine(bounds.center, bounds.centerLeft,   paint);
-    if ((paths & PATH_RT) != 0) canvas.drawLine(bounds.center, bounds.centerRight,  paint);
+    if ((pathMask & PATH_UP) != 0) canvas.drawLine(bounds.center, bounds.topCenter,    paint);
+    if ((pathMask & PATH_DN) != 0) canvas.drawLine(bounds.center, bounds.bottomCenter, paint);
+    if ((pathMask & PATH_LT) != 0) canvas.drawLine(bounds.center, bounds.centerLeft,   paint);
+    if ((pathMask & PATH_RT) != 0) canvas.drawLine(bounds.center, bounds.centerRight,  paint);
   }
 }
 
@@ -178,7 +162,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     _cells = toCells(puzzle);
   }
 
-  setPuzzle(MasyuPuzzle puzzle) {
+  void setPuzzle(MasyuPuzzle puzzle) {
     List<List<CustomPaint>> cells = toCells(puzzle);
     setState(() {
       this.puzzle = puzzle;
@@ -195,36 +179,36 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
       key: GlobalKey(),
       isComplex: true,
       willChange: true,
-      painter: _MasyuCellPainter(_constraintFor(puzzle.gridSpec[row][col])),
+      painter: _MasyuCellPainter(CellType.forSpecChar(puzzle.gridSpec[row][col])),
       child: Container(width: 40, height: 40),
     )));
   }
 
-  markPath(int dir) {
+  void markPath(int dir) {
     _MasyuCellPainter painter = _cells[_dragRow][_dragCol].painter;
     painter.addPath(dir);
   }
 
-  move(Dir dir) {
+  void move(Direction dir) {
     markPath(dir.fromDir);
-    _dragRow += dir.dr;
-    _dragCol += dir.dc;
+    _dragRow += dir.rowDelta;
+    _dragCol += dir.colDelta;
     markPath(dir.toDir);
   }
 
-  moveTo(int row, int col) {
+  void moveTo(int row, int col) {
     while (_dragRow != row || _dragCol != col) {
       int dRow = row - _dragRow;
       int dCol = col - _dragCol;
       if (dRow.abs() > dCol.abs()) {
-        if (dRow > 0) { move(DIR_DOWN);  } else { move(DIR_UP);    }
+        if (dRow > 0) { move(Direction.down);  } else { move(Direction.up);    }
       } else {
-        if (dCol > 0) { move(DIR_RIGHT); } else { move(DIR_LEFT);  }
+        if (dCol > 0) { move(Direction.right); } else { move(Direction.left);  }
       }
     }
   }
 
-  clear() {
+  void clear() {
     for (int row = 0; row < _cells.length; row++) {
       for (int col = 0; col < _cells[row].length; col++) {
         _MasyuCellPainter painter = _cells[row][col].painter;
@@ -234,7 +218,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     _dragging = false;
   }
 
-  solve() {
+  void solve() {
     clear();
     List<List<int>> path = puzzle.solution;
     _dragging = true;
@@ -261,7 +245,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     );
   }
 
-  doDrag(Offset pos) {
+  void doDrag(Offset pos) {
     for (int row = 0; row < _cells.length; row++) {
       for (int col = 0; col < _cells[row].length; col++) {
         GlobalKey key = _cells[row][col].key;
@@ -282,7 +266,8 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     }
   }
 
-  dragStop() => _dragging = false;
+  void dragStop() => _dragging = false;
+
   @override
   Widget build(BuildContext context) {
     // This method is rerun every time setState is called, for instance as done
@@ -299,14 +284,14 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
       ),
       drawer: Drawer(
         child: ListView(
-          children: List<Widget>.generate(PUZZLES.length, (i) => ListTile(
-            title: Text(PUZZLES[i].description),
+          children: [...PUZZLES.map((puzzle) => ListTile(
+            title: Text(puzzle.description),
             trailing: Icon(Icons.arrow_forward),
             onTap: () {
-              setPuzzle(PUZZLES[i]);
+              setPuzzle(puzzle);
               Navigator.of(context).pop();
             }
-          ))
+          ))],
         )
       ),
       body: Center(
