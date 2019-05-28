@@ -44,18 +44,18 @@ class PathDirection {
   final int rowDelta;
   final int colDelta;
 
-  const PathDirection._PathDirection(this.rowDelta, this.colDelta);
+  const PathDirection._internal(this.rowDelta, this.colDelta);
 
-  static const up    = PathDirection._PathDirection(-1,  0);
-  static const down  = PathDirection._PathDirection( 1,  0);
-  static const left  = PathDirection._PathDirection( 0, -1);
-  static const right = PathDirection._PathDirection( 0,  1);
+  static const up    = PathDirection._internal(-1,  0);
+  static const down  = PathDirection._internal( 1,  0);
+  static const left  = PathDirection._internal( 0, -1);
+  static const right = PathDirection._internal( 0,  1);
 
-  PathDirection get reverseDirection {
+  PathDirection get reverse {
     switch (this) {
-      case up: return down;
-      case down: return up;
-      case left: return right;
+      case up:    return down;
+      case down:  return up;
+      case left:  return right;
       case right: return left;
       default: throw 'Unrecognized path direction $this';
     }
@@ -68,9 +68,9 @@ class PathSet {
   static const _ltBit = 4;
   static const _rtBit = 8;
 
-  int _pathMask;
-
-  PathSet([this._pathMask = 0]);
+  final ValueNotifier<int> pathMaskNotifier = new ValueNotifier(0);
+  int get _pathMask => pathMaskNotifier.value;
+  set _pathMask(int m) => pathMaskNotifier.value = m;
 
   bool goesUp()    => (_pathMask & _upBit) != 0;
   bool goesDown()  => (_pathMask & _dnBit) != 0;
@@ -78,20 +78,6 @@ class PathSet {
   bool goesRight() => (_pathMask & _rtBit) != 0;
 
   void clear() => _pathMask = 0;
-
-  void goUp()    => _pathMask |= _upBit;
-  void goDown()  => _pathMask |= _dnBit;
-  void goLeft()  => _pathMask |= _ltBit;
-  void goRight() => _pathMask |= _rtBit;
-
-  void go(PathDirection p) {
-    switch (p) {
-      case PathDirection.up:    goUp();    break;
-      case PathDirection.down:  goDown();  break;
-      case PathDirection.left:  goLeft();  break;
-      case PathDirection.right: goRight(); break;
-    }
-  }
 
   void flipUp()    => _pathMask ^= _upBit;
   void flipDown()  => _pathMask ^= _dnBit;
@@ -125,58 +111,42 @@ class PathSet {
   }
 }
 
-const int PATH_UP = 1;
-const int PATH_DN = 2;
-const int PATH_LT = 4;
-const int PATH_RT = 8;
+class PathLocation {
+  int row;
+  int col;
 
-class Direction {
-  final int rowDelta;
-  final int colDelta;
-  final int fromDir;
-  final int toDir;
+  PathLocation(this.row, this.col);
 
-  const Direction(this.rowDelta, this.colDelta, this.fromDir, this.toDir);
+  void move(PathDirection dir) {
+    this.row += dir.rowDelta;
+    this.col += dir.colDelta;
+  }
 
-  static const up    = Direction(-1,  0, PATH_UP, PATH_DN);
-  static const down  = Direction( 1,  0, PATH_DN, PATH_UP);
-  static const left  = Direction( 0, -1, PATH_LT, PATH_RT);
-  static const right = Direction( 0,  1, PATH_RT, PATH_LT);
+  bool isAt(int row, int col) => this.row == row && this.col == col;
 }
 
 class _MasyuCellPainter extends CustomPainter {
   final int constraint;
-  ValueNotifier<int> pathMaskNotifier;
+  final PathSet paths = new PathSet();
 
-  _MasyuCellPainter({@required this.constraint, int initPathMask = 0}) {
-    this.pathMaskNotifier = ValueNotifier(initPathMask);
-  }
+  _MasyuCellPainter({@required this.constraint});
 
   @override
   void addListener(VoidCallback listener) {
-    pathMaskNotifier.addListener(listener);
+    paths.pathMaskNotifier.addListener(listener);
   }
 
   @override
   void removeListener(VoidCallback listener) {
-    pathMaskNotifier.removeListener(listener);
+    paths.pathMaskNotifier.removeListener(listener);
   }
 
-  void addPath(int dir) {
-    switch (dir) {
-      case PATH_UP:
-      case PATH_DN:
-      case PATH_LT:
-      case PATH_RT:
-        pathMaskNotifier.value ^= dir;
-        break;
-      default:
-        throw 'Unrecognized path direction: $dir';
-    }
+  void flipPath(PathDirection direction) {
+    paths.flip(direction);
   }
 
   void clearPath() {
-    pathMaskNotifier.value = 0;
+    paths.clear();
   }
 
   @override
@@ -184,20 +154,9 @@ class _MasyuCellPainter extends CustomPainter {
     return true;
   }
 
-  /**
-   * Determine if more than two paths are indicated for the cell by counting
-   * the bits in the bitmask of its paths.
-   */
-  bool _moreThanTwoPaths(int pathmask) {
-    pathmask &= pathmask-1;
-    pathmask &= pathmask-1;
-    return pathmask > 0;
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
 //    print('paint(size=$size, constraint=$constraint, paths=$paths.value)');
-    final int pathMask = pathMaskNotifier.value;
 
     final Rect bounds = Rect.fromLTWH(0.0, 0.0, size.width, size.height);
     final double minDim = min(size.width, size.height);
@@ -225,23 +184,21 @@ class _MasyuCellPainter extends CustomPainter {
     canvas.drawRect(bounds, paint);
 
     // paths
-    paint.color = _moreThanTwoPaths(pathMask) ? Colors.red : Colors.blue;
+    paint.color = paths.pathCount() > 2 ? Colors.red : Colors.blue;
     paint.strokeWidth = pathW;
     paint.strokeJoin = StrokeJoin.round;
     paint.strokeCap = StrokeCap.round;
-    if ((pathMask & PATH_UP) != 0) canvas.drawLine(bounds.center, bounds.topCenter,    paint);
-    if ((pathMask & PATH_DN) != 0) canvas.drawLine(bounds.center, bounds.bottomCenter, paint);
-    if ((pathMask & PATH_LT) != 0) canvas.drawLine(bounds.center, bounds.centerLeft,   paint);
-    if ((pathMask & PATH_RT) != 0) canvas.drawLine(bounds.center, bounds.centerRight,  paint);
+    if (paths.goesUp())    canvas.drawLine(bounds.center, bounds.topCenter,    paint);
+    if (paths.goesDown())  canvas.drawLine(bounds.center, bounds.bottomCenter, paint);
+    if (paths.goesLeft())  canvas.drawLine(bounds.center, bounds.centerLeft,   paint);
+    if (paths.goesRight()) canvas.drawLine(bounds.center, bounds.centerRight,  paint);
   }
 }
 
 class _MasyuHomePageState extends State<MasyuHomePage> {
   MasyuPuzzle puzzle;
   List<List<CustomPaint>> _cells;
-  bool _dragging = false;
-  int _dragRow;
-  int _dragCol;
+  PathLocation _drag;
 
   _MasyuHomePageState(this.puzzle) {
     _cells = toCells(puzzle);
@@ -252,7 +209,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     setState(() {
       this.puzzle = puzzle;
       this._cells = cells;
-      this._dragging = false;
+      this._drag = null;
     });
   }
 
@@ -269,26 +226,25 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     )));
   }
 
-  void markPath(int dir) {
-    _MasyuCellPainter painter = _cells[_dragRow][_dragCol].painter;
-    painter.addPath(dir);
+  void markPath(PathDirection dir) {
+    _MasyuCellPainter painter = _cells[_drag.row][_drag.col].painter;
+    painter.flipPath(dir);
   }
 
-  void move(Direction dir) {
-    markPath(dir.fromDir);
-    _dragRow += dir.rowDelta;
-    _dragCol += dir.colDelta;
-    markPath(dir.toDir);
+  void move(PathDirection dir) {
+    markPath(dir);
+    _drag.move(dir);
+    markPath(dir.reverse);
   }
 
   void moveTo(int row, int col) {
-    while (_dragRow != row || _dragCol != col) {
-      int dRow = row - _dragRow;
-      int dCol = col - _dragCol;
+    while (!_drag.isAt(row, col)) {
+      int dRow = row - _drag.row;
+      int dCol = col - _drag.col;
       if (dRow.abs() > dCol.abs()) {
-        if (dRow > 0) { move(Direction.down);  } else { move(Direction.up);    }
+        if (dRow > 0) { move(PathDirection.down);  } else { move(PathDirection.up);    }
       } else {
-        if (dCol > 0) { move(Direction.right); } else { move(Direction.left);  }
+        if (dCol > 0) { move(PathDirection.right); } else { move(PathDirection.left);  }
       }
     }
   }
@@ -300,17 +256,15 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
         painter.clearPath();
       }
     }
-    _dragging = false;
+    _drag = null;
   }
 
   void solve() {
     clear();
     List<List<int>> path = puzzle.solution;
-    _dragging = true;
-    _dragRow = path.last[0];
-    _dragCol = path.last[1];
+    _drag = PathLocation(path.last[0], path.last[1]);
     path.forEach((pt) => moveTo(pt[0], pt[1]));
-    _dragging = false;
+    _drag = null;
   }
 
   Widget _title() {
@@ -338,12 +292,10 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
         Rect bounds = rb.paintBounds;
         Offset lPos = rb.globalToLocal(pos);
         if (bounds.contains(lPos)) {
-          if (_dragging) {
-            moveTo(row, col);
+          if (_drag == null) {
+            _drag = PathLocation(row, col);
           } else {
-            _dragging = true;
-            _dragRow = row;
-            _dragCol = col;
+            moveTo(row, col);
           }
           return;
         }
@@ -351,7 +303,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     }
   }
 
-  void dragStop() => _dragging = false;
+  void dragStop() => _drag = null;
 
   @override
   Widget build(BuildContext context) {
