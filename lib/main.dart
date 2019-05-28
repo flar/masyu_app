@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'puzzles.dart';
+import 'paths.dart';
 
 void main() => runApp(MasyuApp());
 
@@ -24,7 +25,7 @@ class MasyuApp extends StatelessWidget {
     return MaterialApp(
       title: 'Masyu Demo',
       theme: ThemeData(
-        primarySwatch: Colors.green,
+        primarySwatch: Colors.blue,
       ),
       home: MasyuHomePage(title: 'Masyu Demo Home Page'),
     );
@@ -38,91 +39,6 @@ class MasyuHomePage extends StatefulWidget {
 
   @override
   _MasyuHomePageState createState() => _MasyuHomePageState(kPuzzles[1]);
-}
-
-class PathDirection {
-  final int rowDelta;
-  final int colDelta;
-
-  const PathDirection._internal(this.rowDelta, this.colDelta);
-
-  static const up    = PathDirection._internal(-1,  0);
-  static const down  = PathDirection._internal( 1,  0);
-  static const left  = PathDirection._internal( 0, -1);
-  static const right = PathDirection._internal( 0,  1);
-
-  PathDirection get reverse {
-    switch (this) {
-      case up:    return down;
-      case down:  return up;
-      case left:  return right;
-      case right: return left;
-      default: throw 'Unrecognized path direction $this';
-    }
-  }
-}
-
-class PathSet {
-  static const _upBit = 1;
-  static const _dnBit = 2;
-  static const _ltBit = 4;
-  static const _rtBit = 8;
-
-  final ValueNotifier<int> pathMaskNotifier = new ValueNotifier(0);
-  int get _pathMask => pathMaskNotifier.value;
-  set _pathMask(int m) => pathMaskNotifier.value = m;
-
-  bool goesUp()    => (_pathMask & _upBit) != 0;
-  bool goesDown()  => (_pathMask & _dnBit) != 0;
-  bool goesLeft()  => (_pathMask & _ltBit) != 0;
-  bool goesRight() => (_pathMask & _rtBit) != 0;
-
-  void clear() => _pathMask = 0;
-
-  void flipUp()    => _pathMask ^= _upBit;
-  void flipDown()  => _pathMask ^= _dnBit;
-  void flipLeft()  => _pathMask ^= _ltBit;
-  void flipRight() => _pathMask ^= _rtBit;
-
-  void flip(PathDirection p) {
-    switch (p) {
-      case PathDirection.up:    flipUp();    break;
-      case PathDirection.down:  flipDown();  break;
-      case PathDirection.left:  flipLeft();  break;
-      case PathDirection.right: flipRight(); break;
-    }
-  }
-
-  int pathCount() {
-    switch (_pathMask) {
-      case 0:
-        return 0;
-      case 1:case 2:case 4:case 8:
-        return 1;
-      case 3:case 5:case 6:case 9:case 10:case 12:
-        return 2;
-      case 7:case 11:case 13:case 14:
-        return 3;
-      case 15:
-        return 4;
-      default:
-        throw 'Bad path mask: $_pathMask';
-    }
-  }
-}
-
-class PathLocation {
-  int row;
-  int col;
-
-  PathLocation(this.row, this.col);
-
-  void move(PathDirection dir) {
-    this.row += dir.rowDelta;
-    this.col += dir.colDelta;
-  }
-
-  bool isAt(int row, int col) => this.row == row && this.col == col;
 }
 
 class _MasyuCellPainter extends CustomPainter {
@@ -201,11 +117,11 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
   PathLocation _drag;
 
   _MasyuHomePageState(this.puzzle) {
-    _cells = toCells(puzzle);
+    _cells = _toCells(puzzle);
   }
 
-  void setPuzzle(MasyuPuzzle puzzle) {
-    List<List<CustomPaint>> cells = toCells(puzzle);
+  void _setPuzzle(MasyuPuzzle puzzle) {
+    List<List<CustomPaint>> cells = _toCells(puzzle);
     setState(() {
       this.puzzle = puzzle;
       this._cells = cells;
@@ -213,7 +129,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     });
   }
 
-  List<List<CustomPaint>> toCells(MasyuPuzzle puzzle) {
+  List<List<CustomPaint>> _toCells(MasyuPuzzle puzzle) {
     return List<List<CustomPaint>>
         .generate(puzzle.numRows, (row) => List<CustomPaint>
         .generate(puzzle.numCols, (col) => CustomPaint(
@@ -226,30 +142,30 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     )));
   }
 
-  void markPath(PathDirection dir) {
+  void _markPath(PathDirection dir) {
     _MasyuCellPainter painter = _cells[_drag.row][_drag.col].painter;
     painter.flipPath(dir);
   }
 
-  void move(PathDirection dir) {
-    markPath(dir);
+  void _move(PathDirection dir) {
+    _markPath(dir);
     _drag.move(dir);
-    markPath(dir.reverse);
+    _markPath(dir.reverse);
   }
 
-  void moveTo(int row, int col) {
+  void _moveTo(int row, int col) {
     while (!_drag.isAt(row, col)) {
       int dRow = row - _drag.row;
       int dCol = col - _drag.col;
       if (dRow.abs() > dCol.abs()) {
-        if (dRow > 0) { move(PathDirection.down);  } else { move(PathDirection.up);    }
+        if (dRow > 0) { _move(PathDirection.down);  } else { _move(PathDirection.up);    }
       } else {
-        if (dCol > 0) { move(PathDirection.right); } else { move(PathDirection.left);  }
+        if (dCol > 0) { _move(PathDirection.right); } else { _move(PathDirection.left);  }
       }
     }
   }
 
-  void clear() {
+  void _clearPath() {
     for (int row = 0; row < _cells.length; row++) {
       for (int col = 0; col < _cells[row].length; col++) {
         _MasyuCellPainter painter = _cells[row][col].painter;
@@ -259,11 +175,11 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     _drag = null;
   }
 
-  void solve() {
-    clear();
+  void _showSolution() {
+    _clearPath();
     List<List<int>> path = puzzle.solution;
     _drag = PathLocation(path.last[0], path.last[1]);
-    path.forEach((pt) => moveTo(pt[0], pt[1]));
+    path.forEach((pt) => _moveTo(pt[0], pt[1]));
     _drag = null;
   }
 
@@ -284,7 +200,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     );
   }
 
-  void doDrag(Offset pos) {
+  void _doDrag(Offset pos) {
     for (int row = 0; row < _cells.length; row++) {
       for (int col = 0; col < _cells[row].length; col++) {
         GlobalKey key = _cells[row][col].key;
@@ -295,7 +211,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
           if (_drag == null) {
             _drag = PathLocation(row, col);
           } else {
-            moveTo(row, col);
+            _moveTo(row, col);
           }
           return;
         }
@@ -321,15 +237,25 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
       ),
       drawer: Drawer(
         child: ListView(
-          children: [...kPuzzles.map((puzzle) => ListTile(
-            title: Text(puzzle.description),
-            trailing: Icon(Icons.arrow_forward),
-            onTap: () {
-              setPuzzle(puzzle);
-              Navigator.of(context).pop();
-            }
-          ))],
-        )
+          children: [
+            DrawerHeader(
+              child: Text('Available puzzles'),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+            for (var puzzle in kPuzzles)
+              ListTile(
+                title: Text(puzzle.description),
+                subtitle: Text(puzzle.author),
+                trailing: Icon(Icons.arrow_forward),
+                onTap: () {
+                  _setPuzzle(puzzle);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
       ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
@@ -337,14 +263,16 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
         child: GestureDetector(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List<Widget>.generate(_cells.length, (i) => Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: _cells[i]
-              ),
-            ),
+            children: [
+              for (var row in _cells)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: row,
+                ),
+            ],
           ),
-          onPanDown: (details) => doDrag(details.globalPosition),
-          onPanUpdate: (details) => doDrag(details.globalPosition),
+          onPanDown: (details) => _doDrag(details.globalPosition),
+          onPanUpdate: (details) => _doDrag(details.globalPosition),
           onPanEnd: (details) => dragStop(),
           onPanCancel: () => dragStop(),
         ),
@@ -361,12 +289,12 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
             Spacer(),
             RaisedButton(
               child: Text('Clear'),
-              onPressed: () => clear(),
+              onPressed: () => _clearPath(),
             ),
             Spacer(),
             RaisedButton(
               child: Text('Show Solution'),
-              onPressed: puzzle.solution == null ? null : () => solve(),
+              onPressed: puzzle.solution == null ? null : () => _showSolution(),
             ),
             Spacer(flex: 2),
           ],
