@@ -37,7 +37,92 @@ class MasyuHomePage extends StatefulWidget {
   final String title;
 
   @override
-  _MasyuHomePageState createState() => _MasyuHomePageState(PUZZLES[1]);
+  _MasyuHomePageState createState() => _MasyuHomePageState(kPuzzles[1]);
+}
+
+class PathDirection {
+  final int rowDelta;
+  final int colDelta;
+
+  const PathDirection._PathDirection(this.rowDelta, this.colDelta);
+
+  static const up    = PathDirection._PathDirection(-1,  0);
+  static const down  = PathDirection._PathDirection( 1,  0);
+  static const left  = PathDirection._PathDirection( 0, -1);
+  static const right = PathDirection._PathDirection( 0,  1);
+
+  PathDirection get reverseDirection {
+    switch (this) {
+      case up: return down;
+      case down: return up;
+      case left: return right;
+      case right: return left;
+      default: throw 'Unrecognized path direction $this';
+    }
+  }
+}
+
+class PathSet {
+  static const _upBit = 1;
+  static const _dnBit = 2;
+  static const _ltBit = 4;
+  static const _rtBit = 8;
+
+  int _pathMask;
+
+  PathSet([this._pathMask = 0]);
+
+  bool goesUp()    => (_pathMask & _upBit) != 0;
+  bool goesDown()  => (_pathMask & _dnBit) != 0;
+  bool goesLeft()  => (_pathMask & _ltBit) != 0;
+  bool goesRight() => (_pathMask & _rtBit) != 0;
+
+  void clear() => _pathMask = 0;
+
+  void goUp()    => _pathMask |= _upBit;
+  void goDown()  => _pathMask |= _dnBit;
+  void goLeft()  => _pathMask |= _ltBit;
+  void goRight() => _pathMask |= _rtBit;
+
+  void go(PathDirection p) {
+    switch (p) {
+      case PathDirection.up:    goUp();    break;
+      case PathDirection.down:  goDown();  break;
+      case PathDirection.left:  goLeft();  break;
+      case PathDirection.right: goRight(); break;
+    }
+  }
+
+  void flipUp()    => _pathMask ^= _upBit;
+  void flipDown()  => _pathMask ^= _dnBit;
+  void flipLeft()  => _pathMask ^= _ltBit;
+  void flipRight() => _pathMask ^= _rtBit;
+
+  void flip(PathDirection p) {
+    switch (p) {
+      case PathDirection.up:    flipUp();    break;
+      case PathDirection.down:  flipDown();  break;
+      case PathDirection.left:  flipLeft();  break;
+      case PathDirection.right: flipRight(); break;
+    }
+  }
+
+  int pathCount() {
+    switch (_pathMask) {
+      case 0:
+        return 0;
+      case 1:case 2:case 4:case 8:
+        return 1;
+      case 3:case 5:case 6:case 9:case 10:case 12:
+        return 2;
+      case 7:case 11:case 13:case 14:
+        return 3;
+      case 15:
+        return 4;
+      default:
+        throw 'Bad path mask: $_pathMask';
+    }
+  }
 }
 
 const int PATH_UP = 1;
@@ -63,8 +148,8 @@ class _MasyuCellPainter extends CustomPainter {
   final int constraint;
   ValueNotifier<int> pathMaskNotifier;
 
-  _MasyuCellPainter(this.constraint, [int initPaths = 0]) {
-    this.pathMaskNotifier = ValueNotifier(initPaths);
+  _MasyuCellPainter({@required this.constraint, int initPathMask = 0}) {
+    this.pathMaskNotifier = ValueNotifier(initPathMask);
   }
 
   @override
@@ -112,14 +197,14 @@ class _MasyuCellPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
 //    print('paint(size=$size, constraint=$constraint, paths=$paths.value)');
-    int pathMask = pathMaskNotifier.value;
+    final int pathMask = pathMaskNotifier.value;
 
-    Rect bounds = Rect.fromLTWH(0.0, 0.0, size.width, size.height);
-    double minDim = min(size.width, size.height);
-    double radius = minDim * 0.375;
-    double pathW = max(2.0, minDim * 0.125);
+    final Rect bounds = Rect.fromLTWH(0.0, 0.0, size.width, size.height);
+    final double minDim = min(size.width, size.height);
+    final double radius = minDim * 0.375;
+    final double pathW = max(2.0, minDim * 0.125);
 
-    Paint paint = Paint();
+    final Paint paint = Paint();
 
     canvas.clipRect(bounds);
 
@@ -179,7 +264,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
       key: GlobalKey(),
       isComplex: true,
       willChange: true,
-      painter: _MasyuCellPainter(CellType.forSpecChar(puzzle.gridSpec[row][col])),
+      painter: _MasyuCellPainter(constraint: CellType.forSpecChar(puzzle.gridSpec[row][col])),
       child: Container(width: 40, height: 40),
     )));
   }
@@ -284,7 +369,7 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
       ),
       drawer: Drawer(
         child: ListView(
-          children: [...PUZZLES.map((puzzle) => ListTile(
+          children: [...kPuzzles.map((puzzle) => ListTile(
             title: Text(puzzle.description),
             trailing: Icon(Icons.arrow_forward),
             onTap: () {
@@ -312,26 +397,28 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
           onPanCancel: () => dragStop(),
         ),
       ),
-      bottomSheet: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Spacer(flex: 2),
-          RaisedButton(
-            child: Text('How to Play'),
-            onPressed: _launchHelpURL,
-          ),
-          Spacer(),
-          RaisedButton(
-            child: Text('Clear'),
-            onPressed: () => clear(),
-          ),
-          Spacer(),
-          RaisedButton(
-            child: Text('Show Solution'),
-            onPressed: puzzle.solution == null ? null : () => solve(),
-          ),
-          Spacer(flex: 2),
-        ],
+      bottomNavigationBar: BottomAppBar(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Spacer(flex: 2),
+            RaisedButton(
+              child: Text('How to Play'),
+              onPressed: _launchHelpURL,
+            ),
+            Spacer(),
+            RaisedButton(
+              child: Text('Clear'),
+              onPressed: () => clear(),
+            ),
+            Spacer(),
+            RaisedButton(
+              child: Text('Show Solution'),
+              onPressed: puzzle.solution == null ? null : () => solve(),
+            ),
+            Spacer(flex: 2),
+          ],
+        ),
       ),
     );
   }

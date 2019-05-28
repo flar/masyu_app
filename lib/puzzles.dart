@@ -1,3 +1,17 @@
+class CellType {
+  static const empty = 0;
+  static const openCircle = 1;
+  static const filledCircle = 2;
+
+  static int forSpecChar(String cellChar) {
+    switch (cellChar) {
+      case 'O': return CellType.openCircle;
+      case '@': return CellType.filledCircle;
+      default: return CellType.empty;
+    }
+  }
+}
+
 class MasyuPuzzle {
   final String description;
   final String srcURL;
@@ -14,7 +28,7 @@ class MasyuPuzzle {
       this.gridSpec, this.solution);
 }
 
-const List<MasyuPuzzle> PUZZLES = const [
+const List<MasyuPuzzle> kPuzzles = const [
   MasyuPuzzle(10, 10,
       'Wikipedia Masyu Example',
       'https://commons.wikimedia.org/wiki/File:Masyu_puzzle.svg',
