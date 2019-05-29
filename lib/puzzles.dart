@@ -75,4 +75,19 @@ const List<MasyuPuzzle> kPuzzles = const [
         [7, 1], [7, 0], [4, 0], [4, 4], [3, 4], [3, 0],
       ]
   ),
+  /*
+  MasyuPuzzle(3, 3,
+    'Icon generation puzzle',
+    'http://github.com/jim-flar/masyu_app/',
+    'Jim Graham',
+    'mailto:flar@google.com',
+    const [
+      '@O@',
+      'O.O',
+      '@O@',
+    ], const [
+      [0, 0], [0, 2], [2, 2], [2, 0],
+    ],
+  ),
+  */
 ];
