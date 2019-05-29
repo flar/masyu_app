@@ -56,24 +56,21 @@ class _MasyuCellPainter extends CustomPainter {
     paths.pathMaskNotifier.removeListener(listener);
   }
 
-  void flipPath(PathDirection direction) {
-    paths.flip(direction);
-  }
+  void flipPath(PathDirection direction) => paths.flip(direction);
+  void clearPath() => paths.clear();
 
-  void clearPath() {
-    paths.clear();
-  }
+  bool _isFilledCircle() => constraint == CellType.filledCircle;
+  bool _isOpenCircle()   => constraint == CellType.openCircle;
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
-  }
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 
   @override
   void paint(Canvas canvas, Size size) {
 //    print('paint(size=$size, constraint=$constraint, paths=$paths.value)');
 
     final Rect bounds = Rect.fromLTWH(0.0, 0.0, size.width, size.height);
+    final Offset center = bounds.center;
     final double minDim = min(size.width, size.height);
     final double radius = minDim * 0.375;
     final double pathW = max(2.0, minDim * 0.125);
@@ -88,10 +85,10 @@ class _MasyuCellPainter extends CustomPainter {
 
     // constraint
     paint.color = Colors.black;
-    if (constraint == CellType.filledCircle) canvas.drawCircle(bounds.center, radius, paint);
+    if (_isFilledCircle()) canvas.drawCircle(center, radius, paint);
     paint.style = PaintingStyle.stroke;
     paint.strokeWidth = 2;
-    if (constraint == CellType.openCircle) canvas.drawCircle(bounds.center, radius, paint);
+    if (_isOpenCircle()) canvas.drawCircle(center, radius, paint);
 
     // border
     paint.color = Colors.blueGrey;
@@ -103,15 +100,16 @@ class _MasyuCellPainter extends CustomPainter {
     paint.strokeWidth = pathW;
     paint.strokeJoin = StrokeJoin.round;
     paint.strokeCap = StrokeCap.round;
-    if (paths.goesUp())    canvas.drawLine(bounds.center, bounds.topCenter,    paint);
-    if (paths.goesDown())  canvas.drawLine(bounds.center, bounds.bottomCenter, paint);
-    if (paths.goesLeft())  canvas.drawLine(bounds.center, bounds.centerLeft,   paint);
-    if (paths.goesRight()) canvas.drawLine(bounds.center, bounds.centerRight,  paint);
+    if (paths.goesUp())    canvas.drawLine(center, bounds.topCenter,    paint);
+    if (paths.goesDown())  canvas.drawLine(center, bounds.bottomCenter, paint);
+    if (paths.goesLeft())  canvas.drawLine(center, bounds.centerLeft,   paint);
+    if (paths.goesRight()) canvas.drawLine(center, bounds.centerRight,  paint);
   }
 }
 
 class _MasyuHomePageState extends State<MasyuHomePage> {
   MasyuPuzzle puzzle;
+
   List<List<CustomPaint>> _cells;
   PathLocation _drag;
 
@@ -129,16 +127,20 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
   }
 
   List<List<CustomPaint>> _toCells(MasyuPuzzle puzzle) {
-    return List<List<CustomPaint>>
-        .generate(puzzle.numRows, (row) => List<CustomPaint>
-        .generate(puzzle.numCols, (col) => CustomPaint(
-//            size: Size(20, 20),
-      key: GlobalKey(),
-      isComplex: true,
-      willChange: true,
-      painter: _MasyuCellPainter(constraint: CellType.forSpecChar(puzzle.gridSpec[row][col])),
-      child: Container(width: 40, height: 40),
-    )));
+    return [
+      for (String rowSpec in puzzle.gridSpec) [
+        for (int col = 0; col < rowSpec.length; col++)
+          CustomPaint(
+            key: GlobalKey(),
+            isComplex: true,
+            willChange: true,
+            painter: _MasyuCellPainter(
+                constraint: CellType.forSpecChar(rowSpec[col])
+            ),
+            child: Container(width: 40, height: 40),
+          ),
+      ],
+    ];
   }
 
   void _markPath(PathDirection dir) {
