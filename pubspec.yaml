@@ -36,7 +36,7 @@ dev_dependencies:
 
 # The following section is specific to Flutter.
 flutter_icons:
-#  ios: true
+  ios: true
   android: true
   image_path_ios: "assets/launcher/Masyu_icon.png"
   image_path_android: "assets/launcher/Masyu_icon.png"
