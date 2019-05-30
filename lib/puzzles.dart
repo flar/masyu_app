@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 class CellType {
-  static const empty = 0;
-  static const openCircle = 1;
+  static const empty        = 0;
+  static const openCircle   = 1;
   static const filledCircle = 2;
 
   static int forCodePoint(int codePoint) {
