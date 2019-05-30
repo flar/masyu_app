@@ -40,27 +40,214 @@ class MasyuHomePage extends StatefulWidget {
   _MasyuHomePageState createState() => _MasyuHomePageState(kPuzzles[1]);
 }
 
-class _MasyuCellPainter extends CustomPainter {
-  final int constraint;
-  final PathSet paths = new PathSet();
+class _MasyuCellState implements Listenable {
+  static const _constraintErrorBit = 1;
+  static const _pathErrorBit       = 2;
+  static const _pathHighlightBit   = 4;
 
-  _MasyuCellPainter({@required this.constraint});
+  final ValueNotifier<int> _state;
+  bool get constraintError => (_state.value & _constraintErrorBit) != 0;
+  bool get pathError       => (_state.value & _pathErrorBit)       != 0;
+  bool get pathHighlight   => (_state.value & _pathHighlightBit)   != 0;
+  set constraintError(bool newState) => _setState(_constraintErrorBit, newState);
+  set pathError      (bool newState) => _setState(_pathErrorBit,       newState);
+  set pathHighlight  (bool newState) => _setState(_pathHighlightBit,   newState);
+
+  void _setState(int stateBit, bool newState) {
+    if (newState) {
+      _state.value |= stateBit;
+    } else {
+      _state.value &= ~stateBit;
+    }
+  }
+
+  _MasyuCellState() : _state = ValueNotifier(0);
+
+  void clear() => _state.value = 0;
 
   @override
   void addListener(VoidCallback listener) {
-    paths.pathMaskNotifier.addListener(listener);
+    _state.addListener(listener);
   }
 
   @override
   void removeListener(VoidCallback listener) {
-    paths.pathMaskNotifier.removeListener(listener);
+    _state.removeListener(listener);
+  }
+}
+
+class _MasyuCell implements Listenable {
+  final int constraint;
+  final PathSet paths;
+  final _MasyuCellState state;
+  _MasyuCell upward;
+  _MasyuCell downward;
+  _MasyuCell leftward;
+  _MasyuCell rightward;
+
+  _MasyuCell({@required this.constraint})
+      : paths = PathSet(),
+        state = _MasyuCellState();
+
+  void clear() {
+    paths.clearAll();
+    state.clear();
   }
 
-  void flipPath(PathDirection direction) => paths.flip(direction);
-  void clearPath() => paths.clear();
+  void flip(PathDirection dir) {
+    paths.flip(dir);
+    state.pathError = paths.pathCount() > 2;
+    checkConstraint();
+    checkNeighbors();
+  }
 
-  bool _isFilledCircle() => constraint == CellType.filledCircle;
-  bool _isOpenCircle()   => constraint == CellType.openCircle;
+  bool goesUp()    => paths.goesUp();
+  bool goesDown()  => paths.goesDown();
+  bool goesLeft()  => paths.goesLeft();
+  bool goesRight() => paths.goesRight();
+
+  bool goesHorizontal() => goesLeft() || goesRight();
+  bool goesVertical()   => goesUp()   || goesDown();
+
+  void checkNeighbors() {
+    upward?.checkConstraint();
+    downward?.checkConstraint();
+    leftward?.checkConstraint();
+    rightward?.checkConstraint();
+  }
+
+  void checkConstraint() {
+    switch (constraint) {
+      case CellType.empty:
+        state.constraintError = false;
+        break;
+      case CellType.openCircle:
+        state.constraintError = _hasOpenConstraintError();
+        break;
+      case CellType.filledCircle:
+        state.constraintError = _checkFilledConstraint();
+        break;
+    }
+  }
+
+  bool _hasOpenConstraintError() {
+    if (goesHorizontal() && goesVertical()) return true;
+
+    if (goesUp()   && upward  .goesUp() &&
+        goesDown() && downward.goesDown())
+    {
+      return true;
+    }
+    if (goesLeft()  && leftward .goesLeft() &&
+        goesRight() && rightward.goesRight())
+    {
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _checkFilledConstraint() {
+    if (goesUp()   && goesDown())  return true;
+    if (goesLeft() && goesRight()) return true;
+
+    if (goesUp()    && upward   .goesHorizontal()) return true;
+    if (goesDown()  && downward .goesHorizontal()) return true;
+    if (goesLeft()  && leftward .goesVertical())   return true;
+    if (goesRight() && rightward.goesVertical())   return true;
+
+    return false;
+  }
+
+  _MasyuCellPainter _painter;
+  _MasyuCellPainter get painter => _painter ??= _MasyuCellPainter(this);
+  Key _key;
+  Key get key => _key ??= GlobalKey();
+
+  @override
+  void addListener(VoidCallback listener) {
+    paths.addListener(listener);
+    state.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    paths.removeListener(listener);
+    state.removeListener(listener);
+  }
+}
+
+class _MasyuGrid {
+  final MasyuPuzzle puzzle;
+  final List<_MasyuCell> cells;
+  int get numRows => puzzle.numRows;
+  int get numCols => puzzle.numCols;
+
+  _MasyuGrid({@required this.puzzle}) : cells = [
+    for (String row in puzzle.gridSpec)
+      for (int codePoint in row.codeUnits)
+        _MasyuCell(constraint: CellType.forCodePoint(codePoint))
+  ] {
+    for (int row = 0; row < numRows; row++) {
+      for (int col = 0; col < numCols; col++) {
+        if (row > 0)         cell(row, col).upward    = cell(row-1, col);
+        if (row < numRows-1) cell(row, col).downward  = cell(row+1, col);
+        if (col > 0)         cell(row, col).leftward  = cell(row, col-1);
+        if (col < numCols-1) cell(row, col).rightward = cell(row, col+1);
+      }
+    }
+  }
+
+  _MasyuCell cell(int row, int col) {
+    return cells[row * numCols + col];
+  }
+
+  void clear() {
+    for (var cell in cells) cell.clear();
+  }
+
+  PathLocation hit(Offset pos) {
+    for (int row = 0; row < numRows; row++) {
+      for (int col = 0; col < numCols; col++) {
+        GlobalKey key = cell(row, col).key;
+        RenderBox rb = key.currentContext.findRenderObject();
+        Rect bounds = rb.paintBounds;
+        Offset lPos = rb.globalToLocal(pos);
+        if (bounds.contains(lPos)) {
+          return PathLocation(row, col);
+        }
+      }
+    }
+    return null;
+  }
+
+  List<_MasyuCell> row(int row) {
+    int start = row * numCols;
+    int end = start + numCols;
+    return cells.sublist(start, end);
+  }
+
+  Iterable<List<_MasyuCell>> get rows =>
+      Iterable.generate(numRows, (index) => row(index));
+}
+
+class _MasyuCellPainter extends CustomPainter {
+  final _MasyuCell _cell;
+
+  _MasyuCellPainter(this._cell);
+
+  @override
+  void addListener(VoidCallback listener) {
+    _cell.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    _cell.removeListener(listener);
+  }
+
+  bool _isFilledCircle() => _cell.constraint == CellType.filledCircle;
+  bool _isOpenCircle()   => _cell.constraint == CellType.openCircle;
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => true;
@@ -84,7 +271,7 @@ class _MasyuCellPainter extends CustomPainter {
     canvas.drawRect(bounds, paint);
 
     // constraint
-    paint.color = Colors.black;
+    paint.color = _cell.state.constraintError ? Colors.red.shade900 : Colors.black;
     if (_isFilledCircle()) canvas.drawCircle(center, radius, paint);
     paint.style = PaintingStyle.stroke;
     paint.strokeWidth = 2;
@@ -96,56 +283,37 @@ class _MasyuCellPainter extends CustomPainter {
     canvas.drawRect(bounds, paint);
 
     // paths
-    paint.color = paths.pathCount() > 2 ? Colors.red : Colors.blue;
+    paint.color = _cell.state.pathError ? Colors.red : Colors.blue;
     paint.strokeWidth = pathW;
     paint.strokeJoin = StrokeJoin.round;
     paint.strokeCap = StrokeCap.round;
-    if (paths.goesUp())    canvas.drawLine(center, bounds.topCenter,    paint);
-    if (paths.goesDown())  canvas.drawLine(center, bounds.bottomCenter, paint);
-    if (paths.goesLeft())  canvas.drawLine(center, bounds.centerLeft,   paint);
-    if (paths.goesRight()) canvas.drawLine(center, bounds.centerRight,  paint);
+    if (_cell.goesUp())    canvas.drawLine(center, bounds.topCenter,    paint);
+    if (_cell.goesDown())  canvas.drawLine(center, bounds.bottomCenter, paint);
+    if (_cell.goesLeft())  canvas.drawLine(center, bounds.centerLeft,   paint);
+    if (_cell.goesRight()) canvas.drawLine(center, bounds.centerRight,  paint);
   }
 }
 
 class _MasyuHomePageState extends State<MasyuHomePage> {
   MasyuPuzzle puzzle;
-
-  List<List<CustomPaint>> _cells;
+  _MasyuGrid grid;
   PathLocation _drag;
 
   _MasyuHomePageState(this.puzzle) {
-    _cells = _toCells(puzzle);
+    grid = _MasyuGrid(puzzle: puzzle);
   }
 
   void _setPuzzle(MasyuPuzzle puzzle) {
-    List<List<CustomPaint>> cells = _toCells(puzzle);
+    _MasyuGrid grid = _MasyuGrid(puzzle: puzzle);
     setState(() {
       this.puzzle = puzzle;
-      this._cells = cells;
+      this.grid = grid;
       this._drag = null;
     });
   }
 
-  List<List<CustomPaint>> _toCells(MasyuPuzzle puzzle) {
-    return [
-      for (String rowSpec in puzzle.gridSpec) [
-        for (int col = 0; col < rowSpec.length; col++)
-          CustomPaint(
-            key: GlobalKey(),
-            isComplex: true,
-            willChange: true,
-            painter: _MasyuCellPainter(
-                constraint: CellType.forSpecChar(rowSpec[col])
-            ),
-            child: Container(width: 40, height: 40),
-          ),
-      ],
-    ];
-  }
-
   void _markPath(PathDirection dir) {
-    _MasyuCellPainter painter = _cells[_drag.row][_drag.col].painter;
-    painter.flipPath(dir);
+    grid.cell(_drag.row, _drag.col).flip(dir);
   }
 
   void _move(PathDirection dir) {
@@ -156,23 +324,12 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
 
   void _moveTo(int row, int col) {
     while (!_drag.isAt(row, col)) {
-      int dRow = row - _drag.row;
-      int dCol = col - _drag.col;
-      if (dRow.abs() > dCol.abs()) {
-        if (dRow > 0) { _move(PathDirection.down);  } else { _move(PathDirection.up);    }
-      } else {
-        if (dCol > 0) { _move(PathDirection.right); } else { _move(PathDirection.left);  }
-      }
+      _move(PathDirection.bestStepFor(row - _drag.row, col - _drag.col));
     }
   }
 
   void _clearPath() {
-    for (int row = 0; row < _cells.length; row++) {
-      for (int col = 0; col < _cells[row].length; col++) {
-        _MasyuCellPainter painter = _cells[row][col].painter;
-        painter.clearPath();
-      }
-    }
+    for (var cell in grid.cells) cell.clear();
     _drag = null;
   }
 
@@ -202,25 +359,19 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
   }
 
   void _doDrag(Offset pos) {
-    for (int row = 0; row < _cells.length; row++) {
-      for (int col = 0; col < _cells[row].length; col++) {
-        GlobalKey key = _cells[row][col].key;
-        RenderBox rb = key.currentContext.findRenderObject();
-        Rect bounds = rb.paintBounds;
-        Offset lPos = rb.globalToLocal(pos);
-        if (bounds.contains(lPos)) {
-          if (_drag == null) {
-            _drag = PathLocation(row, col);
-          } else {
-            _moveTo(row, col);
-          }
-          return;
-        }
+    PathLocation gridLocation = grid.hit(pos);
+    if (gridLocation != null) {
+      if (_drag == null) {
+        _drag = gridLocation;
+      } else {
+        _moveTo(gridLocation.row, gridLocation.col);
       }
     }
   }
 
-  void dragStop() => _drag = null;
+  void dragStop() {
+    _drag = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -255,10 +406,19 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              for (var row in _cells)
+              for (var row in grid.rows)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: row,
+                  children: [
+                    for (var cell in row)
+                      CustomPaint(
+                        key: cell.key,
+                        isComplex: true,
+                        willChange: true,
+                        painter: cell.painter,
+                        child: Container(width: 40, height: 40),
+                      ),
+                  ],
                 ),
             ],
           ),

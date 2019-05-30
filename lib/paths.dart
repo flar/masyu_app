@@ -20,24 +20,70 @@ class PathDirection {
       default: throw 'Unrecognized path direction $this';
     }
   }
+
+  static PathDirection bestStepFor(int rowDelta, int colDelta) {
+    if (rowDelta.abs() > colDelta.abs()) {
+      return (rowDelta < 0) ? up : down;
+    } else {
+      return (colDelta < 0) ? left : right;
+    }
+  }
 }
 
-class PathSet {
+class PathSet implements Listenable {
   static const _upBit = 1;
   static const _dnBit = 2;
   static const _ltBit = 4;
   static const _rtBit = 8;
 
-  final ValueNotifier<int> pathMaskNotifier = new ValueNotifier(0);
-  int get _pathMask => pathMaskNotifier.value;
-  set _pathMask(int m) => pathMaskNotifier.value = m;
+  final ValueNotifier<int> _pathMaskNotifier = new ValueNotifier(0);
+  int get _pathMask => _pathMaskNotifier.value;
+  set _pathMask(int m) => _pathMaskNotifier.value = m;
+
+  @override
+  void addListener(VoidCallback listener) {
+    _pathMaskNotifier.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    _pathMaskNotifier.removeListener(listener);
+  }
 
   bool goesUp()    => (_pathMask & _upBit) != 0;
   bool goesDown()  => (_pathMask & _dnBit) != 0;
   bool goesLeft()  => (_pathMask & _ltBit) != 0;
   bool goesRight() => (_pathMask & _rtBit) != 0;
 
-  void clear() => _pathMask = 0;
+  void setUp()    => _pathMask |= _upBit;
+  void setDown()  => _pathMask |= _dnBit;
+  void setLeft()  => _pathMask |= _ltBit;
+  void setRight() => _pathMask |= _rtBit;
+
+  void set(PathDirection p) {
+    switch (p) {
+      case PathDirection.up:    setUp();    break;
+      case PathDirection.down:  setDown();  break;
+      case PathDirection.left:  setLeft();  break;
+      case PathDirection.right: setRight(); break;
+    }
+  }
+
+  void clearUp()    => _pathMask &= ~_upBit;
+  void clearDown()  => _pathMask &= ~_dnBit;
+  void clearLeft()  => _pathMask &= ~_ltBit;
+  void clearRight() => _pathMask &= ~_rtBit;
+
+  void clear(PathDirection p) {
+    switch (p) {
+      case PathDirection.up:    clearUp();    break;
+      case PathDirection.down:  clearDown();  break;
+      case PathDirection.left:  clearLeft();  break;
+      case PathDirection.right: clearRight(); break;
+    }
+  }
+
+  void clearAll() => _pathMask = 0;
 
   void flipUp()    => _pathMask ^= _upBit;
   void flipDown()  => _pathMask ^= _dnBit;
@@ -53,22 +99,11 @@ class PathSet {
     }
   }
 
-  int pathCount() {
-    switch (_pathMask) {
-      case 0:
-        return 0;
-      case 1:case 2:case 4:case 8:
-      return 1;
-      case 3:case 5:case 6:case 9:case 10:case 12:
-      return 2;
-      case 7:case 11:case 13:case 14:
-      return 3;
-      case 15:
-        return 4;
-      default:
-        throw 'Bad path mask: $_pathMask';
-    }
-  }
+  static const _bitCounts = [
+    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+  ];
+
+  int pathCount() => _bitCounts[_pathMask];
 }
 
 class PathLocation {
