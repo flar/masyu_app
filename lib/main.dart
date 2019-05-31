@@ -46,6 +46,9 @@ class _MasyuCellState implements Listenable {
   static const _pathHighlightBit   = 4;
 
   final ValueNotifier<int> _state;
+
+  _MasyuCellState() : _state = ValueNotifier(0);
+
   bool get constraintError => (_state.value & _constraintErrorBit) != 0;
   bool get pathError       => (_state.value & _pathErrorBit)       != 0;
   bool get pathHighlight   => (_state.value & _pathHighlightBit)   != 0;
@@ -61,8 +64,6 @@ class _MasyuCellState implements Listenable {
     }
   }
 
-  _MasyuCellState() : _state = ValueNotifier(0);
-
   void clear() => _state.value = 0;
 
   @override
@@ -77,7 +78,7 @@ class _MasyuCellState implements Listenable {
 }
 
 class _MasyuCell implements Listenable {
-  final int constraint;
+  final CellType constraint;
   final PathSet paths;
   final _MasyuCellState state;
   _MasyuCell upward;
@@ -110,9 +111,9 @@ class _MasyuCell implements Listenable {
   bool goesVertical()   => goesUp()   || goesDown();
 
   void checkNeighbors() {
-    upward?.checkConstraint();
-    downward?.checkConstraint();
-    leftward?.checkConstraint();
+    upward   ?.checkConstraint();
+    downward ?.checkConstraint();
+    leftward ?.checkConstraint();
     rightward?.checkConstraint();
   }
 
@@ -184,9 +185,9 @@ class _MasyuGrid {
   int get numCols => puzzle.numCols;
 
   _MasyuGrid({@required this.puzzle}) : cells = [
-    for (String row in puzzle.gridSpec)
-      for (int codePoint in row.codeUnits)
-        _MasyuCell(constraint: CellType.forCodePoint(codePoint))
+    for (var row in puzzle.constraints)
+      for (var constraint in row)
+        _MasyuCell(constraint: constraint),
   ] {
     for (int row = 0; row < numRows; row++) {
       for (int col = 0; col < numCols; col++) {

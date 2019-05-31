@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
 
 class CellType {
-  static const empty        = 0;
-  static const openCircle   = 1;
-  static const filledCircle = 2;
+  static const empty        = CellType._internal(0);
+  static const openCircle   = CellType._internal(1);
+  static const filledCircle = CellType._internal(2);
 
-  static int forCodePoint(int codePoint) {
+  // ignore: unused_field
+  final int _id;
+  const CellType._internal(this._id);
+
+  static const _openCodeUnit   = 0x4f;
+  static const _filledCodeUnit = 0x40;
+
+  static CellType _forCodeUnit(int codePoint) {
+    assert('O'.codeUnitAt(0) == _openCodeUnit);
+    assert('@'.codeUnitAt(0) == _filledCodeUnit);
     switch (codePoint) {
-      case 0x4f: return CellType.openCircle;
-      case 0x40: return CellType.filledCircle;
-      default: return CellType.empty;
-    }
-  }
-
-  static int forSpecChar(String cellChar) {
-    switch (cellChar) {
-      case 'O': return CellType.openCircle;
-      case '@': return CellType.filledCircle;
-      default: return CellType.empty;
+      case _openCodeUnit:   return CellType.openCircle;
+      case _filledCodeUnit: return CellType.filledCircle;
+      default:              return CellType.empty;
     }
   }
 }
@@ -40,10 +41,18 @@ class MasyuPuzzle {
               this.author,
               this.authorURL,
     @required this.gridSpec,
-              this.solution});
+              this.solution
+  });
+
+  List<List<CellType>> get constraints => [
+    for (String rowSpec in gridSpec) [
+      for (int codeUnit in rowSpec.codeUnits)
+        CellType._forCodeUnit(codeUnit),
+    ],
+  ];
 }
 
-const List<MasyuPuzzle> kPuzzles = const [
+const List<MasyuPuzzle> kPuzzles = [
   MasyuPuzzle(
       numRows: 10,
       numCols: 10,
