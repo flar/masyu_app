@@ -346,16 +346,102 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
     if (puzzle == null) {
       return Text('No puzzle loaded');
     }
-    if (puzzle.author == null) {
-      return Text(puzzle.description ?? 'Unknown puzzle');
-    }
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(puzzle.description ?? 'Unknown puzzle', textAlign: TextAlign.left),
-        Text('by ${puzzle.author}', textAlign: TextAlign.right),
+    return Text(puzzle.description ?? 'Unknown puzzle');
+  }
+
+  static IconButton linkButton(String link) {
+    return link == null ? IconButton(
+      icon: Icon(Icons.link_off),
+      onPressed: null,
+    ) : IconButton(
+      icon: Icon(Icons.link),
+      onPressed: () => _launchURL(link),
+    );
+  }
+
+  AppBar appBar() {
+    return AppBar(
+      title: _title(),
+      actions: [
+        linkButton(puzzle.srcURL),
+        IconButton(
+            icon: Icon(Icons.help_outline),
+            onPressed: _launchHelpURL
+        ),
       ],
+    );
+  }
+
+  Drawer appDrawer() {
+    return Drawer(
+      child: ListView(
+        children: [
+          Text(
+            'Available puzzles',
+            style: Theme.of(context).textTheme.display1,
+            textAlign: TextAlign.center,
+          ),
+          Divider(),
+          for (var puzzle in kPuzzles)
+            ListTile(
+              title: Text(puzzle.description),
+              subtitle: puzzle.author == null ? null : Text(puzzle.author),
+              trailing: Icon(Icons.arrow_forward),
+              onTap: () {
+                _setPuzzle(puzzle);
+                Navigator.pop(context);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  BottomAppBar navBar() {
+    return BottomAppBar(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FlatButton(
+            child: Text('Clear'),
+            onPressed: () => _clearPath(),
+          ),
+          RaisedButton(
+            child: Text('Solution'),
+            onPressed: puzzle.solution == null ? null : () => _showSolution(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget gridDisplay() {
+    return Center(
+      child: GestureDetector(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var row in grid.rows)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var cell in row)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                      child:CustomPaint(
+                        key: cell.key,
+                        painter: cell.painter,
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+        onPanDown: (details) => _doDrag(details.globalPosition),
+        onPanUpdate: (details) => _doDrag(details.globalPosition),
+        onPanEnd: (details) => dragStop(),
+        onPanCancel: () => dragStop(),
+      ),
     );
   }
 
@@ -377,81 +463,10 @@ class _MasyuHomePageState extends State<MasyuHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: _title(),
-      ),
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            DrawerHeader(
-              child: Text('Available puzzles'),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-              ),
-            ),
-            for (var puzzle in kPuzzles)
-              ListTile(
-                title: Text(puzzle.description),
-                subtitle: Text(puzzle.author),
-                trailing: Icon(Icons.arrow_forward),
-                onTap: () {
-                  _setPuzzle(puzzle);
-                  Navigator.pop(context);
-                },
-              ),
-          ],
-        ),
-      ),
-      body: Center(
-        child: GestureDetector(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var row in grid.rows)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var cell in row)
-                      CustomPaint(
-                        key: cell.key,
-                        isComplex: true,
-                        willChange: true,
-                        painter: cell.painter,
-                        child: Container(width: 40, height: 40),
-                      ),
-                  ],
-                ),
-            ],
-          ),
-          onPanDown: (details) => _doDrag(details.globalPosition),
-          onPanUpdate: (details) => _doDrag(details.globalPosition),
-          onPanEnd: (details) => dragStop(),
-          onPanCancel: () => dragStop(),
-        ),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Spacer(flex: 2),
-            RaisedButton(
-              child: Text('How to Play'),
-              onPressed: _launchHelpURL,
-            ),
-            Spacer(),
-            RaisedButton(
-              child: Text('Clear'),
-              onPressed: () => _clearPath(),
-            ),
-            Spacer(),
-            RaisedButton(
-              child: Text('Show Solution'),
-              onPressed: puzzle.solution == null ? null : () => _showSolution(),
-            ),
-            Spacer(flex: 2),
-          ],
-        ),
-      ),
+      appBar: appBar(),
+      drawer: appDrawer(),
+      body: gridDisplay(),
+      bottomNavigationBar: navBar(),
     );
   }
 }
